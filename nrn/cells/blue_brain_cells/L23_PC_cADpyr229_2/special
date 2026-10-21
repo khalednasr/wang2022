@@ -1,0 +1,13 @@
+#!/bin/sh
+if test "x${NRNHOME}" = "x" ; then
+	NRNHOME="/Applications/NEURON-7.4/nrn"
+fi
+if test "x${NRNBIN}" = "x" ; then
+	NRNBIN="/Applications/NEURON-7.4/nrn/x86_64/bin/"
+fi
+if test "" = "yes" ; then
+	NRNIV="${NRNBIN}nrniv.app/Contents/MacOS/nrniv"
+else
+	NRNIV="${NRNBIN}nrniv"
+fi
+"${NRNIV}" -dll "/Users/amanaberra/Documents/NEURON/Parallel_plate_TAL/cells/blue_brain_cells/L23_PC_cADpyr229_2/mechanisms/x86_64/.libs/libnrnmech.so" "$@"

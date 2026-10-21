@@ -1,0 +1,122 @@
+objref parent_names[numComp]
+strdef run_folder, parentnames_file, diams_file, sectypes_file, areas_file,somaV_file
+sprint(run_folder,"%stmp/%s",current_dir,run_name)
+// go through all compartments, skip soma, append parent id to parent_vec
+proc getParentNames() { local i, ii,x0,x1,pnseg localobj parentname_rec,secname_rec
+	objref parent_names[numComp]
+	parent_names[0] = new String()
+	parent_names[0].s = " "
+	parentname_rec = new String()
+	secname_rec = new String()
+	in = 0 // start index at 1 (+1 added below), since soma is 0, retains count between sections	
+	for i=1,numSect-1 { 	
+		secrefs.o(i).sec {
+			secname_rec.s = secname() // current section name
+			for(x,0) {
+				ii = in + (2*nseg*x + 1)/2						
+				parent_names[ii] = new String()
+				secrefs.o(i).parent() {
+					parentname_rec.s = secname() //parent section name
+					pnseg = nseg
+				}
+				x1p = 1-1/(2*pnseg) // last compartment of parent section
+				x_prev = x - 1/nseg // previous compartment within section
+				if (ii==in+1) { // first compartment
+					sprint(parent_names[ii].s,"%s.v(%.2f)",parentname_rec.s,x1p) // name of last comp of parent
+				} else { //2nd and on
+					sprint(parent_names[ii].s,"%s.v(%.2f)",secname_rec.s,x_prev)
+				}					
+			}	
+			in = ii		
+		}	
+	}
+	sprint(parentnames_file,"%s/parentnames%g.txt",run_folder,cell_id)
+	wopen(parentnames_file)	
+	for m = 0,numComp-1{	
+		fprint("%s\n",parent_names[m].s)
+	}
+	wopen()
+	printf("Saved parent names to %s\n",parentnames_file)
+}
+
+proc getSecnames() {
+	init_record_vm_soma()	
+	sprint(secnames_file,"%s/secnames%g.txt",run_folder,cell_id)
+	wopen(secnames_file)	
+	for m = 0,numRecord-1 {	
+		fprint("%s\n",secnames[m].s)
+	}
+	wopen()
+}
+proc getDiams() {
+	init_record_vm_soma()	
+	sprint(diams_file,"%s/diams%g.txt",run_folder,cell_id)
+	wopen(diams_file)	
+	for m = 0,numRecord-1 {	
+		fprint("%f\n",diams.x[m])
+	}
+	wopen()
+}
+
+proc getSectypes() {
+	init_record_vm_soma()	
+	sprint(sectypes_file,"%s/sectypes%g.txt",run_folder,cell_id)
+	wopen(sectypes_file)	
+	for m = 0,numRecord-1 {	
+		fprint("%f\n",section_types.x[m])
+	}
+	wopen()
+}
+objref areas_vec
+proc getAreas() {
+	init_record_vm_soma()	
+	objref areas_vec
+	areas_vec = new Vector(numComp)
+	secrefs.o(0).sec {areas_vec.x[0] = area(0.5)}	
+	in = 0 // start index at 1 (+1 added below), since soma is 0, retains count between sections	
+	for i=1,numSect-1 { 	
+		secrefs.o(i).sec {			
+			for(x,0) {
+				ii = in + (2*nseg*x + 1)/2	
+				areas_vec.x[ii] = area(x)														
+			}	
+			in = ii		
+		}	
+	}
+	sprint(areas_file,"%s/areas%g.txt",run_folder,cell_id)
+	wopen(areas_file)	
+	for m = 0,numRecord-1 {	
+		fprint("%f\n",areas_vec.x[m])
+	}
+	wopen()
+}
+proc getSomaV2() {		
+	somaV = 0
+	secrefs.o(0).sec {		
+		for i=1,n3d()-1{
+			somaV+=(PI/3)*(arc3d(i)-arc3d(i-1))*( (1/4)*diam3d(i-1)^2 + diam3d(i-1)*diam3d(i)/4 + (1/4)*diam3d(i)^2 )
+		}
+	}	
+	printf("Soma volume = %f um^3\n",somaV)
+	sprint(somaV_file,"%s/somaV%g.txt",run_folder,cell_id)
+	wopen(somaV_file)		
+	fprint("%f\n",somaV)	
+	wopen()
+}
+
+func getSomaV() { local somaV		
+	somaV = 0			
+	for i=1,n3d()-1{
+		somaV+=(PI/3)*(arc3d(i)-arc3d(i-1))*( (1/4)*diam3d(i-1)^2 + diam3d(i-1)*diam3d(i)/4 + (1/4)*diam3d(i)^2 )
+	}	
+	return somaV
+}
+
+proc getDendLs() { local La, Lb
+	La = 0 // total apical length
+	Lb = 0 // total basal length
+	forsec cell.apical La += L
+	forsec cell.basal Lb += L
+	printf("Total apical length = %.3f um\n",La)
+	printf("Total basal length = %.3f um\n",Lb)
+}

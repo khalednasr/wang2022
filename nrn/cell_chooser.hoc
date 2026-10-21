@@ -1,0 +1,453 @@
+// Calls correct cell model files given cell_id input
+
+proc cell_chooser() { local start_ind localobj cell_dir, prune_secs, terminal_sec_str, meth1cells, current_sec_str, axon_sec_str
+	
+	forall delete_section()
+	
+	cell = nil	
+	cell_rotated = 0
+	synapses_enabled = 0
+			
+	cell_dir = new String()
+	sprint(cell_dir.s, "cells/blue_brain_cells/%s", cell_name_list.o(cell_id-1).s)
+	printf("*------------------Loading Blue Brain cell %s.---------*\n" ,cell_name_list.o(cell_id-1).s)
+	chdir(cell_dir.s) 		
+	{ load_file("createsimulation.hoc") }	// load cell-specific createsimulation.hoc file	
+	create_cell(synapses_enabled)	
+	chdir(current_dir.s) 
+	
+	printf("*------------------Loaded Blue Brain cell: %s.---------*\n",cell_name_list.o(cell_id-1).s)	
+	
+	celsius = temp // set simulation temperature 
+	printf("Temperature = %g degree Celcius.\n",celsius)	
+	// insert xtra/extracellular and run setpointers/get secrefs()
+	
+	forall { 	// call setpointers() on original cell to get type_xtra of each original axon section
+		insert xtra
+		insert extracellular
+	}
+	// Scale diameters and myelinate axon before setting pointers
+	// Scale compartment diameters	
+	if (scale_soma_area != 1) 	diam(0.5) = scale_soma_area * area(0.5)/(PI*L)
+	if (scale_apic_diam != 1)  	scale_diam2(scale_apic_diam,  cell.apical)
+	if (scale_basal_diam != 1) 	scale_diam2(scale_basal_diam, cell.basal)	
+	if (scale_basal_L != 1) {
+		forsec cell.basal { 
+			L = L * scale_basal_L 
+		}
+	}
+	if (scale_ax != 1)			scale_diam2(scale_ax, cell.axonal)
+	
+	// Get main axon of original axon
+	// Prune axon if prune_ax >=1
+	meth1cells = new Vector() // identify which main axon identification algorithm to use
+	meth1cells.append(3,10,21,24,25,37,40,41) // method 1 cell ids  ( -16 compared original code)
+	// get main axon (most relevant for PCs) and prune sections (non-main axon axonal sections)
+	
+	
+	if (!meth1cells.contains(cell_id)) { // use descending approach for most axons		
+		main_ax_list = get_main_ax2()
+		printf("Got main axon (2).\n")
+	} else { 								// for cell meth1cells use ascending approach		
+		main_ax_list = get_main_ax()			
+		printf("Got main axon (1).\n")
+	}	
+	
+	if ( prune_ax > 0 ) {	
+		prune_secs = new SectionList()
+		forsec cell.axonal prune_secs.append() 	// assign all axonal sections to prune_secs
+		forsec main_ax_list prune_secs.remove() // remove main axon from prune_secs SectionList
+		
+		axon_pruner(prune_ax, prune_secs) 		// runs setpointers() after pruning inside
+		if (!meth1cells.contains(cell_id)) { 	// use descending approach for most axons
+			main_ax_list = get_main_ax2()
+		} else { 								// for cell meth1cells use ascending approach
+			main_ax_list = get_main_ax()
+		}
+	}	
+	// Myelinate axon after getting main axon, pruning, and scaling diameter			
+	if ( myelinate_ax ) { 
+		myelinate_axon(cell.axonal) 
+		forall {
+			insert xtra
+			insert extracellular
+		}
+		setpointers()						// if myelinate_ax, call to include new myelinated axon sections
+		if (!meth1cells.contains(cell_id)) { 	// use descending approach for most axons
+			main_ax_list = get_main_ax2()
+		} else { 								// for cell meth1cells use ascending approach
+			main_ax_list = get_main_ax()
+		}
+		printf("Inserted xtra and extracellular in all %g compartments.\n",numComp)	
+		
+		current_sec_str = new String()
+		axon_sec_str = new String()
+		cell.axon[0] {axon_sec_str.s = secname()}
+		for ii = 0, numSect - 1 {
+			secrefs.o(ii).sec { current_sec_str.s = secname()  }
+			if (strcmp(current_sec_str.s, axon_sec_str.s) == 0){ // compare each secname to axon[0] secname to get index - 0 means identical
+				AIS_ind = ii
+				printf("Axon[0] (AIS) section: %s, index: %g\n", axon_sec_str.s, AIS_ind)
+			}
+		}
+		Node[0] {axon_sec_str.s = secname()}
+		for ii = 0, numSect - 1 {
+			secrefs.o(ii).sec { current_sec_str.s = secname()  }
+			if (strcmp(current_sec_str.s, axon_sec_str.s) == 0){ // compare each secname to Node[0] secname to get index - 0 means identical
+				node_ind = ii
+				printf("Node[0] (first node) section: %s, index: %g\n", axon_sec_str.s, node_ind)
+			}
+		}
+	}	
+	
+	// scale main axon
+	if (scale_mainax != 1){
+		scale_diam2(scale_mainax, main_ax_list)	
+		printf("Scaled main axon diameters.\n")
+	}
+	
+	// Modify axon for replace_ax == 2 or 3
+	if ( mod_ax ) { // disable activation at terminal node of main axon by enlarging radius  					
+		secrefs.o(term_ind).sec { 
+			//diam(1) = 1000 // set end to 1000 µm diameter, Rin goes to ~ 0 	
+			diam(1) = 100 // set end to 100 µm diameter
+			make_pas()			
+		}
+		terminal_sec_str = new String() // get name of main axon terminal section 
+		secrefs.o(term_ind).sec { terminal_sec_str.s = secname()  }
+		printf("Main axon terminal section: %s, index: %g\n", terminal_sec_str.s, term_ind)
+		printf("\tSet terminal diameter to 100 um.\n")		
+	} 	
+	
+	
+	// Insert current clamp in soma
+	cell.soma {
+		st = new IClamp(0.5)
+		st.dur = st_dur
+		st.del = st_del
+		st.amp = st_amp
+	}
+	printf("Created IClamp with amp %.2f nA, duration %.2f ms, delay %d ms.\n",st.amp,st.dur,st.del)
+	
+	/* 
+	if (synapses_enabled==1) {
+		cell.synapses.active_pre_mtypes.copy(active_pre_mtypes) // set on synapses to 1
+		cell.synapses.pre_mtype_freqs.copy(pre_mtype_freqs) // set frequencies		
+		update_synapses() // creates synapse_plot object and runs cell.synapses.update_synapses		
+		printf("Updated synapses to user-specified settings\n")		
+	} 	*/	
+	printf("**End of cell_chooser().\n\n")
+		
+}
+
+
+// axon_pruner(prune_ax,SectionList)
+proc axon_pruner() { local prune_order, max_order, max_prune_order, num_sec_del localobj seclist
+	prune_order = $1 // prune all collaterals of order >= (max_order+1) - prune_order
+	// e.g. if prune_order = 1, delete all max order collaterals 
+	seclist = $o2
+	if (prune_order >= 1) {				
+		num_sec_del = 0		
+		max_order = get_max_order(seclist) // gets maximum branch order		
+		max_prune_order = max_order + 1 - prune_order // prune axon collaterals with orders >= this value
+		if (max_prune_order < 1) { // prune_order selected is >= max_order 
+			max_prune_order = 1    // leaves only the 1st order collateral (e.g. axon initial segment)  BW?? 
+		}
+		printf("max_prune_order = %g.\n", max_prune_order)
+		forsec seclist {
+			if (order_xtra >= max_prune_order) {
+				delete_section() // delete sections of equal or greater order	
+				num_sec_del += 1
+			}
+		}
+		printf("Max order = %g, removed %g axonal collaterals of order >= %g\nRe-running setpointers().\n",max_order, num_sec_del, max_prune_order)
+		setpointers()  						// if prune_ax, call to include new myelinated axon sections
+	} else {
+		printf("Axonal arbor left intact.\n")
+	}	
+}
+
+// max_order = get_max_order(SectionList) 
+// gets maximum branch order of input SectionList
+// SectionList should have have xtra inserted and should have order_xtra defined (setpointers())
+func get_max_order() { local max_order localobj seclist
+	seclist = $o1
+	max_order = 0
+	forsec seclist {
+		if (ismembrane("xtra")){
+			if (order_xtra > max_order) max_order = order_xtra // get max order 
+		} else {
+			printf("xtra not inserted in %s.\n", secname())
+		}
+	}
+	return max_order
+}
+
+// Generate shape plot with axon colored red, apical dends blue, basal dends green, and black point on soma 
+
+proc color_plot() {		
+	{ load_file("anatscale.hoc") }
+	shplot = new Shape(0)	
+	shplot.view(-1200,-900,2200,1200,300,10,800,600)
+	shplot.color_list(cell.axonal,2)
+	shplot.color_list(cell.apical,3)
+	shplot.color_list(cell.basal,4)
+	cell.soma soma_point = new IClamp(0.5)
+	shplot.point_mark(soma_point,1,"O",10)	
+	if (cell_rotated) shplot.rotate(1,0,0,PI/2,0,0)	
+}
+
+proc color_sec() { 	// access section then execute color_sec()		
+	shplot2 = new Shape(0)	
+	shplot2.view(-1200,-900,2200,1200,300,10,800,600)
+	shplot2.color(2)	
+}
+
+/*
+objref synapse_plot
+proc update_synapses(){
+	synapse_plot = new Shape(0)
+	//synapse_plot.view(-1200,-900,2200,1200,300,10,800,600)
+	cell.synapses.update_synapses(synapse_plot)
+}
+*/
+
+func Lambda() { // input relative position x in section
+	lambda = 10*sqrt( ((1/g_pas($1))*diam($1)*1e-4)/(4*Ra) ) // returns length constant in mm
+	//// Need to modify for myelinated axons, increase by square root of the ratio between internodal distance and nodal length, Basser 1993 Eq. 32
+	// lambda_m \approx lambda * sqrt(INL / L)
+	return lambda
+}
+
+func Tau() { // input relative position x in section
+	tau = (1/g_pas($1)) * cm * 1e-3 // returns time constant in ms
+	
+	//// Need to modify for myelinated axons, Basser 1993 Eq. 32
+	return tau
+}
+
+/*  BW: repeated definition. Edit morphology has one version, with CaDynamics uninserted
+proc make_pas() {
+	if (ismembrane("Ca_HVA")) uninsert Ca_HVA
+	if (ismembrane("SKv3_1")) uninsert SKv3_1
+	if (ismembrane("SK_E2")) uninsert SK_E2
+	if (ismembrane("Ca_LVAst")) uninsert Ca_LVAst
+	if (ismembrane("Ih")) uninsert Ih
+	if (ismembrane("NaTs2_t")) uninsert NaTs2_t
+	//if (ismembrane("CaDynamics_E2")) uninsert CaDynamics_E2
+	if (ismembrane("Nap_Et2")) uninsert Nap_Et2
+	if (ismembrane("K_Pst")) uninsert K_Pst
+	if (ismembrane("K_Tst")) uninsert K_Tst
+	if (ismembrane("NaTa_t")) uninsert NaTa_t
+	if (ismembrane("Im")) uninsert Im
+}
+*/
+
+
+ // same as MATLAB x_rotate, rotates cell 90° about x-axis to align S-D axis of cell with z-axis
+ // x_rotate(cell.all)
+proc x_rotate() { local alpha, ii, xtra_flag localobj rotate_seclist 
+	printf("Applying 90 degree x-rotation.\n")
+	xtra_flag = 0 // print warning that xtra not inserted once
+	cell_rotated = 1 // set to 1
+	rotate_seclist = $o1
+	/*
+	alpha = PI/2
+	Rx = new Matrix(3,3)
+	Rxvals = new Vector()
+	Rxvals.append(1,0,0,0,cos(alpha),sin(alpha),0,-sin(alpha),cos(alpha))
+	Rx.from_vector(Rxvals) // convert to matrix
+	*/	
+	forsec rotate_seclist {		
+		N = n3d()
+		for ii = 0, N-1 {
+			/*rg = new Vector() 
+			rg.append(x3d(i),y3d(i),z3d(i)) // get ith coordinate as vector
+			rf = new Vector() // vector for rotated coordinate
+			//rf = Rx.mulv(rg) // multiply coordinate vector by rotation matrix
+			//rf.append(ri.x[0],-ri.x[2],ri.x[1]) // rotation gives (x, -z, y) */
+			pt3dchange(ii, x3d(ii),-z3d(ii),y3d(ii),diam3d(ii)) // change ith point, leave diameter unchanged
+		}
+		if (ismembrane("xtra")){
+			for(x,0) { // rotate differential vectors
+				y_xtra(x) = z_xtra(x)
+				z_xtra(x) = y_xtra(x)
+				Dy_xtra(x) = -Dz_xtra(x)
+				Dz_xtra(x) = Dy_xtra(x)
+			}
+		} else if (xtra_flag == 0) {
+			printf("xtra not inserted, rotating pt3d data only.\n")
+			xtra_flag = 1 // set to 1 so warning prints once
+		}		
+	}
+}
+
+
+/*
+//input angle of phi rotation (about z-axis) and sectionlist
+// z_rotate(angle,sectionlist)
+proc z_rotate() { local phi, i localobj Rzvals, Rz, ri, rf, rotate_seclist
+  phi = $1 * deg2rad // convert to radians
+  print "rotating cell"
+  rotate_seclist = $o2
+  Rz = new Matrix(3,3)
+  Rzvals = new Vector()
+  Rzvals.append(cos(phi), sin(phi), 0, -sin(phi), cos(phi), 0, 0, 0, 1)
+  Rz.from_vector(Rzvals) // convert to matrix
+  forsec rotate_seclist {
+    N = n3d()
+    for i = 0, N-1 {
+      ri = new Vector() 
+      ri.append(x3d(i),y3d(i),z3d(i)) // get ith coordinate as vector
+      rf = new Vector() // vector for rotated coordinate
+      rf = Rz.mulv(ri) // multiply coordinate vector by rotation matrix
+      pt3dchange(i,rf.x[0],rf.x[1],rf.x[2],diam3d(i)) // change ith point, leave diameter unchanged
+    }    
+  }
+}
+*/
+/*
+// translate pt3d coordinates of cell, make sure to rerun setpointers()
+// translate(SecList,x_shift,y_shift,z_shift)
+proc translate(){ local i, xshift, yshift, zshift localobj trans_sec
+	trans_sec = $o1
+	xshift = $2
+	yshift = $3
+	zshift = $4
+	forsec trans_sec {
+		for i = 0,n3d()-1 {
+			pt3dchange(i,x3d(i)+xshift,y3d(i)+yshift,z3d(i)+zshift,diam3d(i)) // move ith point, leave diameter unchanged
+		}
+	}
+}
+*/
+
+/////
+/* Replace the axon built from the original morphology file with a stub axon.  
+    The stub axon will attempt to use diam info from original axon and L=30.                                                                                
+*/                                                                             
+// 
+/*
+create axon[1]
+proc replace_axon(){ local nSec, D1, D2, dist, count localobj axon_bp
+                                                                                
+    // preserve the number of original axonal sections                          
+    nSec  = 0                                                                   
+    forsec cell.axonal{nSec += 1}                                              
+                                                                                
+    // Try to grab info from original axon                                      
+    if (nSec == 0) { //No axon section present                                    
+        D1 = D2 = 1                                                             
+    } else {                                                                    
+        access cell.axon[0]                                                          
+        D1 = D2 = diam          
+        if( nSec > 1 ) { //More than one axon section present                    
+            access cell.soma distance() //to calculate distance from soma            
+            count = 0 
+            // loop through all axon sections and check for 60um distance
+            forsec cell.axonal {
+                count = count + 1                                               
+                dist = distance(0.5)
+                // if section is longer than 60um then store diam 
+                // and exit from loop                                            
+                if( dist > 60 ) { 
+                    D2 = diam                                                   
+                    break                                                       
+                }                                                               
+            }                                                                   
+        }                                                                       
+    }                                                                           
+          
+    axon_bp = get_axon_biophys()    
+    // Delete old axon                                                  
+    forsec cell.axonal{delete_section()}
+    
+    // And create new one                                             
+    create axon[2]
+                                                                                
+    // Set dimensions of new axon, and append sections to sectionlists
+    axon[0] {                                                            
+        L = 30                                                              
+        diam = D1                                                           
+        nseg = 1 + 2*int(L/40)                                              
+        cell.all.append()                                                            
+        cell.axonal.append()                                                         
+    }                            
+    axon[1] {                                                            
+        L = 30                                                                  
+        diam = D2                                                           
+        nseg = 1 + 2*int(L/40)                                              
+        cell.all.append()                                                            
+        cell.axonal.append()                                                         
+    }                                                                           
+    nSecAxonal = 2                                                              
+        
+    // Connect sections to each other and to soma
+    cell.soma[0] connect axon[0](0), 1                                           
+    axon[0] connect axon[1](0), 1
+    // Set axon biophysical parameters
+    set_axon_biophys(axon_bp,cell.axonal)
+    printf("Replaced axon with initial segment.\n")                                         
+}  
+*/
+// get conductances from original cell.axon[0], save to vector
+obfunc get_axon_biophys() { localobj axon_bp
+	axon_bp = new Vector(14)
+	access cell.axon[0]		 	 	 				 	 	
+	if (ismembrane("NaTa_t")) axon_bp.x[0] = gNaTa_tbar_NaTa_t
+	if (ismembrane("K_Tst")) axon_bp.x[1] = gK_Tstbar_K_Tst
+	if (ismembrane("CaDynamics_E2")) axon_bp.x[2] = gamma_CaDynamics_E2
+	if (ismembrane("Nap_Et2")) axon_bp.x[3] = gNap_Et2bar_Nap_Et2
+	if (ismembrane("SK_E2")) axon_bp.x[4] = gSK_E2bar_SK_E2
+	if (ismembrane("Ca_HVA")) axon_bp.x[5] = gCa_HVAbar_Ca_HVA
+	if (ismembrane("K_Pst")) axon_bp.x[6] = gK_Pstbar_K_Pst
+	if (ismembrane("SKv3_1")) axon_bp.x[7] = gSKv3_1bar_SKv3_1
+	if (ismembrane("CaDynamics_E2")) axon_bp.x[8] = decay_CaDynamics_E2
+	if (ismembrane("Ca_LVAst")) axon_bp.x[9] = gCa_LVAstbar_Ca_LVAst
+	if (ismembrane("Im")) axon_bp.x[10] = gImbar_Im
+	if (ismembrane("Ca")) axon_bp.x[11] = gCabar_Ca
+	axon_bp.x[12] = e_pas
+	axon_bp.x[13] = g_pas
+	return axon_bp	
+}
+
+proc set_axon_biophys() { localobj axon_bp, secList
+	axon_bp = $o1
+	secList = $o2
+	forsec secList {
+		insert pas
+		if (axon_bp.x[0] != 0) 	insert NaTa_t
+		if (axon_bp.x[1] != 0) 	insert K_Tst
+		if (axon_bp.x[2] != 0) 	insert CaDynamics_E2
+		if (axon_bp.x[3] != 0) 	insert Nap_Et2
+		if (axon_bp.x[4] != 0) 	insert SK_E2
+		if (axon_bp.x[5] != 0) 	insert Ca_HVA
+		if (axon_bp.x[6] != 0) 	insert K_Pst
+		if (axon_bp.x[7] != 0) 	insert SKv3_1
+		// already checked to insert CaDynamics with axon_bp.x[2] (gamma)
+		if (axon_bp.x[9] != 0) 	insert Ca_LVAst				
+		if (axon_bp.x[10] != 0) insert Im
+		if (axon_bp.x[11] != 0) insert Ca
+		e_pas = axon_bp.x[12]
+		g_pas = axon_bp.x[13]
+		Ra = 100
+		cm = 1		
+		ena = 50
+		ek = -85
+		for(x,0) {
+			// assign conductivity values from original axon (uniform)
+			if (ismembrane("NaTa_t")) 			gNaTa_tbar_NaTa_t(x) = axon_bp.x[0]
+			if (ismembrane("K_Tst")) 			gK_Tstbar_K_Tst(x) = axon_bp.x[1]
+			if (ismembrane("CaDynamics_E2")) 	gamma_CaDynamics_E2(x) = axon_bp.x[2]
+			if (ismembrane("Nap_Et2")) 			gNap_Et2bar_Nap_Et2(x) = axon_bp.x[3] 
+			if (ismembrane("SK_E2")) 			gSK_E2bar_SK_E2(x) = axon_bp.x[4] 
+			if (ismembrane("Ca_HVA")) 			gCa_HVAbar_Ca_HVA(x) = axon_bp.x[5]
+			if (ismembrane("K_Pst")) 			gK_Pstbar_K_Pst(x) = axon_bp.x[6]
+			if (ismembrane("SKv3_1")) 			gSKv3_1bar_SKv3_1(x) = axon_bp.x[7]
+			if (ismembrane("CaDynamics_E2")) 	decay_CaDynamics_E2(x) = axon_bp.x[8]
+			if (ismembrane("Ca_LVAst")) 		gCa_LVAstbar_Ca_LVAst(x) = axon_bp.x[9]
+			if (ismembrane("Im")) 				gImbar_Im(x) = axon_bp.x[10] 
+			if (ismembrane("Ca")) 				gCabar_Ca(x) = axon_bp.x[11]
+		}
+	}
+}

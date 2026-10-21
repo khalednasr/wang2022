@@ -1,0 +1,218 @@
+// Determine strength of argument to within epsilon, that excites cell.
+func thresh_blocked_filt() { local ind_valid_AP1, ind_valid_AP2, count_burst, in_burst, ii, jj, iter, first_AP, next_AP, pre_AP, ISI localobj valid_ap_times
+	
+	stimul()	
+	burst_spike_count = new Vector()
+	
+	printf("All APs for threshold compartment: %d. \n", thresh_cmprt_ap_times.size())
+	//printf("ALl AP times:")
+	//ap_times_soma.printf()
+	//print min_spike_num
+	
+	thresh_cmprt_filt_ap_times = new Vector()
+	vm_soma_filt_temp = new Vector(vm_soma.size(),0)
+	vm_soma_filt = new Vector(vm_soma.size(),0)
+	
+	/*
+	vm_soma_filt.x[0] = B_HPF.x[0] * vm_soma.x[0]
+	vm_soma_filt.x[1] = B_HPF.x[0] * vm_soma.x[1] + B_HPF.x[1] * vm_soma.x[0] 
+												  - A_HPF.x[1] * vm_soma_filt.x[0]
+	vm_soma_filt.x[2] = B_HPF.x[0] * vm_soma.x[2] + B_HPF.x[1] * vm_soma.x[1] 		+ B_HPF.x[2] * vm_soma.x[0] ...
+												  - A_HPF.x[1] * vm_soma_filt.x[1] 	- A_HPF.x[2] * vm_soma_filt.x[0]
+	vm_soma_filt.x[3] = B_HPF.x[0] * vm_soma.x[3] + B_HPF.x[1] * vm_soma.x[2] 		+ B_HPF.x[2] * vm_soma.x[1] 		+ B_HPF.x[3] * vm_soma.x[0] ...
+												  - A_HPF.x[1] * vm_soma_filt.x[3]	- A_HPF.x[2] * vm_soma_filt.x[1]	- A_HPF.x[3] * vm_soma_filt.x[0]
+	*/
+	//printf("\tHPF total: %d.\n",vm_soma.size())
+	iter = (HPF_n-1)
+	for ii = HPF_n-1, (vm_soma_filt_temp.size()-1) {
+		vm_soma_filt_temp.x[ii] = B_HPF.x[0] * vm_soma.x[ii]
+		//if (ii >= (HPF_n-1)) { 
+		//	iter = (HPF_n-1)
+		//} else {
+		//	iter = ii 
+		//} 
+		
+		for jj = 1, iter {
+			vm_soma_filt_temp.x[ii] = vm_soma_filt_temp.x[ii] + B_HPF.x[jj] * vm_soma.x[ii-jj] - A_HPF.x[jj] * vm_soma_filt_temp.x[ii-jj]
+		}
+	}
+	iter = (BSF_n-1)
+	//printf("\tBSF total: %d.\n",vm_soma.size())
+	for ii = BSF_n-1, vm_soma_filt.size()-1 {
+		vm_soma_filt.x[ii] = B_BSF.x[0] * vm_soma_filt_temp.x[ii]
+		//if (ii >= (BSF_n-1)) { 
+		//	iter = (BSF_n-1)
+		//} else {
+		//	iter = ii 
+		//}
+				
+		for jj = 1, iter {
+			vm_soma_filt.x[ii] = vm_soma_filt.x[ii] + B_BSF.x[jj] * vm_soma_filt_temp.x[ii-jj] - A_BSF.x[jj] * vm_soma_filt.x[ii-jj]
+		}
+	}
+	
+	for ii = 1, vm_soma_filt.size()-1 {
+		if ( (vm_soma_filt.x[ii] >= AP_filt_thresh) && (vm_soma_filt.x[ii-1]< AP_filt_thresh) ) {
+				thresh_cmprt_filt_ap_times.append(tvec.x[ii])
+		}
+	
+	}
+	
+	
+	//vm_soma.plot(graph_filt,tvec,2,3)
+	//vm_soma_filt.plot(graph_filt,tvec,1,4)
+	
+	valid_ap_times = new Vector()
+	ind_valid_AP1 = thresh_cmprt_filt_ap_times.indwhere(">=", t_ss_start)
+	ind_valid_AP2 = thresh_cmprt_filt_ap_times.indwhere(">", t_ss_end)
+	//print ind_valid_firing
+	if ( ind_valid_AP1 == -1 ) {
+		firing_rate = 0
+		printf("No valid AP found within steady state of stimulation waveform.\n")
+		return 1
+	} else {
+		if ( ind_valid_AP2 == -1 ) { 
+			valid_ap_times.copy( thresh_cmprt_filt_ap_times, ind_valid_AP1, thresh_cmprt_filt_ap_times.size()-1 )
+		} else {
+			if ((ind_valid_AP2 - 1) >= ind_valid_AP1) {
+				valid_ap_times.copy(thresh_cmprt_filt_ap_times, ind_valid_AP1, ind_valid_AP2 - 1)
+			}
+		}
+		printf("Valid APs: %d. ", valid_ap_times.size())
+		//printf("Valid AP times: ")
+		// valid_ap_times.printf()
+		printf("\n")
+		count_burst = 0
+		ii = 0
+		while (ii < valid_ap_times.size()) {
+			first_AP = valid_ap_times.x[ii]
+			pre_AP = first_AP
+			count_burst += 1
+			in_burst = 1
+			burst_spike_count.append(1)
+			//printf("\tBurst No. %d: \n\t\tFirst AP at %3.2f ms.\n", count_burst, first_AP)
+		
+			ii += 1
+			while (ii < valid_ap_times.size() && in_burst) {
+				next_AP = valid_ap_times.x[ii]		
+				//Consecutive spikes with inter-spike interval <=15 ms, which occurred during a period of 50 ms or less, were defined as a spiking burst.
+				ISI = next_AP - pre_AP
+				if ( ISI <= 15 && next_AP - first_AP <= 50 ) {
+					pre_AP = next_AP							
+					burst_spike_count.x[count_burst-1] += 1
+					ii += 1
+				} else {
+					in_burst = 0
+				}
+				//printf("\t\tAP at %3.2f ms, ISI %3.2f ms. \n\t\t\tWithin burst: %s. Spikes count within burst: %d.\n", next_AP,ISI, NoYes.o(in_burst).s, burst_spike_count.x[count_burst-1])
+					
+			}
+			//printf("\t\tTotal spikes within Burst No. %d: %d.\n", count_burst, burst_spike_count.x[count_burst-1])
+		}
+		printf("Total number of burst: %d.\n", count_burst)
+		if (burst_spike_count.size()>0) {
+			printf("\tAverage spike count per burst %1.2f. \n",burst_spike_count.mean())
+		}
+		firing_rate = (count_burst) / ((t_ss_end - t_ss_start)/1000)
+		printf("\tAverage firing rate %1.2f.\n", firing_rate)
+		
+		if (firing_rate < 0.25) {
+			return 1 
+		} else {
+			return 0
+		}
+	}
+}
+
+proc threshold_block_filt() { local low, high, t1, sign, block_flag
+	// the "call by reference" arg $&1 is the independent variable
+	t1 = startsw() // used to make sure threshold finder doesn't run longer than 24 hours
+	
+	if (AMP == 0) { AMP = 1000 }
+	if (AMP < 0) { sign = -1} else { sign = 1 }
+	
+	high = block_high * sign  // search within 3000 V/m
+	low = block_low * sign
+	
+	printf("Block threshold search.\n")
+	printf("Initial amplitude: %3.3f\n", AMP)
+	block_flag = thresh_blocked_filt()
+	
+	if (block_flag) {
+		while ( block_flag ) {
+			high = AMP
+			printf("Supra-block-threshold! Upper bound: %3.3f. ", high)
+			if ( (abs(high) > block_low) && (startsw() - t1 < max_time) ) {
+				AMP /= scale_factor
+				printf("Decreased amplitude: %3.3f.\n\n", AMP)
+				block_flag = thresh_blocked_filt()
+			} else {
+				block_flag = 0
+			}
+		}
+		if (startsw() - t1 > max_time) {
+			printf("Threshold search ran for longer than %g sec!! Exiting.\n\n", max_time)
+			AMP = 0
+			return
+		} else if (abs(high) < block_low) {
+			printf("No lower bound found within preset range!! Exiting.\n\n")
+			AMP = 0
+			return
+		} else {
+			low = AMP
+			printf("Sub-block-threshold! Lower bound: %3.3f. Upper bound: %3.3f. ", low, high)
+		}
+	} else {
+		while ( block_flag == 0 ) {
+			low = AMP
+			printf("Sub-block-threshold! Lower bound: %3.3f. ", low)
+			if ( (abs(low) < block_high) && (startsw() - t1 < max_time) ) {
+				AMP *= scale_factor
+				printf("Increased amplitude: %3.3f.\n\n", AMP)
+				block_flag = thresh_blocked_filt()
+			} else {
+				block_flag = 1
+			}
+		}
+		if (startsw() - t1 > max_time) {
+			printf("Threshold search ran for longer than %g sec!! Exiting.\n\n", max_time)
+			AMP = block_high
+			return
+		} else if (abs(low) > block_high) {
+			printf("No upper bound found within preset range!! Exiting.\n\n")
+			AMP = block_high
+			return
+		} else {
+			high = AMP
+			printf("Supra-block-threshold! Lower bound: %3.3f. Upper bound: %3.3f. ", low, high)
+		}
+	}
+	
+	// exp(log(2)/2^4) = 1.044 -> 4.4%
+	// exp(log(2)/2^5) = 1.022 -> 2.2%
+	// exp(log(2)/2^6) = 1.011 -> 1.1%
+	// within 5% accuracy means 4 threshold searches to narrow the bounds
+	// another geometric mean -> exp(log(2)/2^5) = 1.022 -> 2.2% difference from upper and lower bounds
+	// within 3% accuracy means 5 threshold searches to narrow the bounds
+	// another geometric mean -> exp(log(2)/2^6) = 1.011 -> 1.1% difference from upper and lower bounds
+	
+	count_search = 0
+	
+	while ( abs( high/low - 1 ) >  block_acc ) {
+		AMP = sign * sqrt(high * low)
+		count_search = count_search + 1
+		printf("Testing amplitude: %3.3f.\n\n", AMP)
+		if (thresh_blocked_filt()) {
+			high = AMP
+			printf("Supra-block-threshold! Lower bound: %3.3f. Upper bound: %3.3f. ", low, high)
+		} else {
+			low = AMP
+			printf("Sub-block-threshold! Lower bound: %3.3f. Upper bound: %3.3f. ", low, high)
+		}
+		if (stoprun) break
+	}
+	
+	AMP = sign * sqrt(high * low)		// another geometric mean -> exp(log(2)/2^7) = 1.005 -> 0.54% difference from upper and lower bounds
+	printf("Block threshold bounded within %1.2f%%. Geometric mean of bounds: %3.3f. \n\n",(exp( log(scale_factor) / (2^count_search) ) - 1 ) * 100,  AMP)
+	printf("**End of block threshold().\n\n\n")
+}

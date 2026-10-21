@@ -1,0 +1,28 @@
+proc init() { local dt_save, cvode_active
+
+	finitialize( v_init )
+	
+	t = -1e11
+	dt_save = dt
+	dt = 1e9
+
+	// if cvode is on, turn it off to do large fixed step
+	cvode_active = cvode.active()
+	if (cvode_active != 0) { cvode.active(0) }
+
+	while (t<-1e9) { fadvance() }
+
+	// restore cvode if necessary
+	if (cvode_active != 0) { cvode.active(1) }
+
+	dt = dt_save
+	t = 0
+
+	if (cvode.active()) {
+		cvode.re_init()
+	} else {
+		fcurrent()
+	}
+
+	frecord_init()
+}

@@ -1,0 +1,325 @@
+
+// init recording. record Vm and APs from soma and section center of main axon terminal (term_ind)
+
+proc init_AP_record() { local ii localobj rec_sec, sec_str //ind_sec_first, ind_cmp, jj, ind_seg, xval 
+	numRecord = 4 //
+	rec_sec = new Vector(numRecord)
+	rec_sec.x[0] = 0
+	rec_sec.x[1] = term_ind
+	rec_sec.x[2] = AIS_ind
+	rec_sec.x[3] = node_ind
+	/*
+	printf("Soma index = %g\n", 0)
+	printf("Terminal index = %g\n", term_ind)
+	printf("AIS index = %g\n", AIS_ind)
+	printf("Node index = %g\n", node_ind)
+	*/
+	all_ap_times = new Vector()
+	all_netids = new Vector()
+	thresh_cmprt_ap_times = new Vector()
+	thresh_cmprt_netids = new Vector()
+	
+	for ii = 0, numRecord-1 {
+		secrefs.o(rec_sec.x[ii]).sec {
+			sec_str = new String()
+			sec_str.s = secname()
+			printf("Inserted NetCon at compartment %s with index %d and compartment id %d, section name: %s.", cmprt_str.o(ii).s, rec_sec.x[ii], ii+1, sec_str.s)
+			if ( ii == (cmprt-1) ) {
+				printf("\tAP at this compartment recorded and used for threshold determination. ")
+				netcon_tmp_thresh = new NetCon(&v(0.5), nil) 
+				if (ii == 1) {
+					netcon_tmp_thresh.threshold = AP_thresh_term
+				} else {
+					netcon_tmp_thresh.threshold = AP_thresh
+				}
+				printf("Threshold: %f. \n",netcon_tmp_thresh.threshold)
+				
+				netcon_tmp_thresh.record(thresh_cmprt_ap_times, thresh_cmprt_netids, cmprt)	
+				objref netcon_tmp_thresh
+			} else {
+				printf("\tOnly recording AP at this compartment.\n")
+				netcon_tmp = new NetCon(&v(0.5), nil) 
+				if (ii == 1) {
+					netcon_tmp.threshold = AP_thresh_term
+				} else {
+					netcon_tmp.threshold = AP_thresh
+				}
+				netcon_tmp.record(all_ap_times, all_netids, ii + 1)		
+				objref netcon_tmp // reinitialize	
+			}
+		}
+	}
+	
+	printf("**End of init_AP_record().\n\n")
+}
+
+proc init_vm_record_4() { local ii, numRecord localobj rec_sec
+	numRecord = 4 //
+	//
+	tvec = new Vector()
+	tvec.record(&t,record_dt)
+	//
+	objref vm_oarray 					// reinitialize
+	vm_oarray = new O2d(1,numRecord) 	// object containing array of vectors
+	
+	rec_sec = new Vector(numRecord)
+	rec_sec.x[0] = 0
+	rec_sec.x[1] = term_ind
+	rec_sec.x[2] = AIS_ind
+	rec_sec.x[3] = node_ind
+	
+	/*printf("Soma index = %g\n", 0)
+	printf("Terminal index = %g\n", term_ind)
+	printf("AIS index = %g\n", AIS_ind)
+	printf("Node index = %g\n", node_ind)
+	*/
+	for ii = 0,numRecord-1 {
+		vm_oarray.o[0][ii] = new Vector(tstop/record_dt)
+		vm_oarray.o[0][ii].record(&secrefs.o(rec_sec.x[ii]).sec.v(0.5), record_dt)
+	}
+	
+	printf("**End of init_vm_record_4().\n\n")
+}
+
+proc init_vm_record_5() { local ii, numRecord localobj rec_sec
+	numRecord = 4 //
+	//
+	tvec = new Vector()
+	tvec.record(&t,record_dt)
+	//
+	objref vm_oarray 					// reinitialize
+	vm_oarray = new O2d(1,numRecord+1) 	// object containing array of vectors
+	
+	rec_sec = new Vector(numRecord)
+	rec_sec.x[0] = 0
+	rec_sec.x[1] = term_ind
+	rec_sec.x[2] = AIS_ind
+	rec_sec.x[3] = node_ind
+	
+	/*printf("Soma index = %g\n", 0)
+	printf("Terminal index = %g\n", term_ind)
+	printf("AIS index = %g\n", AIS_ind)
+	printf("Node index = %g\n", node_ind)
+	*/
+	for ii = 0,numRecord-1 {
+		vm_oarray.o[0][ii] = new Vector(tstop/record_dt)
+		vm_oarray.o[0][ii].record(&secrefs.o(rec_sec.x[ii]).sec.v(0.5), record_dt)
+	}
+	
+	objref vm_soma 					// reinitialize
+	vm_soma = new Vector(tstop/record_dt)
+	
+	vm_soma_filt_temp = new Vector(vm_soma.size(),0)
+	vm_soma_filt = new Vector(vm_soma.size(),0)
+	
+	vm_soma.record(&secrefs.o(0).sec.v(0.5), record_dt)
+	printf("**End of init_vm_record_5().\n\n")
+}
+
+proc init_vm_record_1() { 
+	//
+	tvec = new Vector()
+	tvec.record(&t,record_dt)
+	//
+	objref vm_soma 					// reinitialize
+
+	/*printf("Soma index = %g\n", 0)
+	*/
+	vm_soma = new Vector(tstop/record_dt)
+	vm_soma_filt_temp = new Vector(vm_soma.size(),0)
+	vm_soma_filt = new Vector(vm_soma.size(),0)
+	
+	vm_soma.record(&secrefs.o(0).sec.v(0.5), record_dt)
+	
+	printf("**End of init_vm_record_1().\n\n")
+}
+
+// save data
+proc save_data_thresh() { local ii
+	// define folder where all data files of current run will be saved
+	run_folder = new String()
+	sprint(run_folder.s,"%stmp/%s",current_dir.s, run_name.s)
+	
+	
+	// save time vector
+	t_file = new String()
+	sprint(t_file.s,"%s/tvec.txt",run_folder.s)
+	file__saveDataVector(t_file, tvec)
+	printf("Saved time vector to %s. Recorded %g time points.\n", t_file.s, tvec.size())
+	
+	printf("Recorded at %g points.\n", numRecord)
+	
+	
+	/*
+	// save secnames
+	secnames_file = new String()
+	sprint(secnames_file.s,"%s/secnames.txt",run_folder.s)
+	{ wopen(secnames_file.s)	}
+	for ii = 0, numRecord - 1 {	
+		fprint("%s\n",secnames[ii].s)
+	}
+	{ wopen() }
+	printf("Saved section names to %s.\n",secnames_file.s)
+	*/
+	
+	
+	// Save vm matrix as binary file directly to one file
+	vm_file_bin = new String()
+	sprint(vm_file_bin.s,"%s/vm_data_bin.txt", run_folder.s)
+	printf("Vm vector size = %g.\n", vm_oarray.o[0][0].size()) 
+	file__saveDataVectors(vm_file_bin, vm_oarray, numRecord)	
+	printf("Saved Vm vectors to binary file in %s.\n", vm_file_bin.s)
+	
+	/*
+	// save section type ids as binary file 
+	sectypes_file_bin = new String()
+	sprint(sectypes_file_bin.s,"%s/sectypes.txt",run_folder.s)
+	file__saveDataVector(sectypes_file_bin, section_types)
+	printf("Saved section types to %s.\n", sectypes_file_bin.s)
+	
+	// save section orders as binary file
+	branchorders_file_bin = new String()
+	sprint(branchorders_file_bin.s,"%s/branchorders.txt",run_folder.s)
+	file__saveDataVector(branchorders_file_bin, branchorders)
+	printf("Saved branch orders to %s.\n", branchorders_file_bin.s)
+	*/	
+	
+	// save spike times and vector of section ids
+	all_ap_file = new String()
+	all_netids_file = new String()
+	sprint(all_ap_file.s,"%s/all_ap_times.txt", run_folder.s)
+	sprint(all_netids_file.s,"%s/all_ap_netids.txt", run_folder.s)		
+	file__saveDataVector(all_ap_file, all_ap_times) // spike times
+	file__saveDataVector(all_netids_file, all_netids) // netids
+	printf("Saved %g all AP times to %s and netids to %s.\n", all_ap_times.size(), all_ap_file.s, all_netids_file.s)
+
+	thresh_cmprt_ap_file = new String()
+	thresh_cmprt_netids_file = new String()
+	sprint(thresh_cmprt_ap_file.s,"%s/thresh_cmprt_ap_times.txt", run_folder.s)
+	sprint(thresh_cmprt_netids_file.s,"%s/thresh_cmprt_ap_netids.txt", run_folder.s)		
+	file__saveDataVector(thresh_cmprt_ap_file, thresh_cmprt_ap_times) // spike times
+	file__saveDataVector(thresh_cmprt_netids_file, thresh_cmprt_netids) // netids
+	printf("Saved %g thresh AP times to %s and netids to %s.\n", thresh_cmprt_ap_times.size(), thresh_cmprt_ap_file.s, thresh_cmprt_netids_file.s)
+	
+	
+	printf("**End of save_data().\n\n")
+}
+// save data block
+proc save_data_block() { local ii
+	// define folder where all data files of current run will be saved
+	run_folder = new String()
+	sprint(run_folder.s,"%stmp/%s",current_dir.s, run_name.s)
+	
+	
+	// save time vector
+	t_file = new String()
+	sprint(t_file.s,"%s/tvec.txt",run_folder.s)
+	file__saveDataVector(t_file, tvec)
+	printf("Saved time vector to %s. Recorded %g time points.\n", t_file.s, tvec.size())
+	
+	printf("Recorded at %g points.\n", numRecord)
+	
+	
+	/*
+	// save secnames
+	secnames_file = new String()
+	sprint(secnames_file.s,"%s/secnames.txt",run_folder.s)
+	{ wopen(secnames_file.s)	}
+	for ii = 0, numRecord - 1 {	
+		fprint("%s\n",secnames[ii].s)
+	}
+	{ wopen() }
+	printf("Saved section names to %s.\n",secnames_file.s)
+	*/
+	
+	
+	// Save vm matrix as binary file directly to one file
+	vm_oarray.o[0][numRecord] = new Vector()
+	vm_oarray.o[0][numRecord].copy(vm_soma_filt)
+	
+	vm_file_bin = new String()
+	sprint(vm_file_bin.s,"%s/vm_data_bin.txt", run_folder.s)
+	printf("Vm vector size = %g.\n", vm_oarray.o[0][0].size()) 
+	file__saveDataVectors(vm_file_bin, vm_oarray, numRecord+1)	
+	printf("Saved Vm vectors to binary file in %s.\n", vm_file_bin.s)
+	
+	/*
+	// save section type ids as binary file 
+	sectypes_file_bin = new String()
+	sprint(sectypes_file_bin.s,"%s/sectypes.txt",run_folder.s)
+	file__saveDataVector(sectypes_file_bin, section_types)
+	printf("Saved section types to %s.\n", sectypes_file_bin.s)
+	
+	// save section orders as binary file
+	branchorders_file_bin = new String()
+	sprint(branchorders_file_bin.s,"%s/branchorders.txt",run_folder.s)
+	file__saveDataVector(branchorders_file_bin, branchorders)
+	printf("Saved branch orders to %s.\n", branchorders_file_bin.s)
+	*/	
+	
+	// save spike times and vector of section ids
+	all_ap_file = new String()
+	all_netids_file = new String()
+	sprint(all_ap_file.s,"%s/all_ap_times.txt", run_folder.s)
+	sprint(all_netids_file.s,"%s/all_ap_netids.txt", run_folder.s)		
+	file__saveDataVector(all_ap_file, all_ap_times) // spike times
+	file__saveDataVector(all_netids_file, all_netids) // netids
+	printf("Saved %g all AP times to %s and netids to %s.\n", all_ap_times.size(), all_ap_file.s, all_netids_file.s)
+
+	thresh_cmprt_ap_file = new String()
+	thresh_cmprt_netids_file = new String()
+	sprint(thresh_cmprt_ap_file.s,"%s/thresh_cmprt_ap_times.txt", run_folder.s)
+	sprint(thresh_cmprt_netids_file.s,"%s/thresh_cmprt_ap_netids.txt", run_folder.s)		
+	file__saveDataVector(thresh_cmprt_ap_file, thresh_cmprt_ap_times) // spike times
+	file__saveDataVector(thresh_cmprt_netids_file, thresh_cmprt_netids) // netids
+	printf("Saved %g thresh AP times to %s and netids to %s.\n", thresh_cmprt_ap_times.size(), thresh_cmprt_ap_file.s, thresh_cmprt_netids_file.s)
+	
+	
+	printf("**End of save_data().\n\n")
+}
+
+proc save_thresh() {
+	
+	//printf("%s\n",firing_file.s)
+	
+	if (burst_spike_count.size() == 0 ) { 
+		mean_spike_count_per_burst  = -1
+	} else {
+		mean_spike_count_per_burst = burst_spike_count.mean()
+	}
+	printf("Number of bursts %g, with average of %g spikes per burst.\n", burst_spike_count.size(), mean_spike_count_per_burst)
+	
+	thresh_file	= new String()
+	sprint(thresh_file.s,"%s/thresh.txt",run_folder.s)
+	wopen(thresh_file.s)
+	
+	fprint("%f\n%f\n%f\n%f", AMP, firing_rate, mean_spike_count_per_burst, burst_spike_count.size())
+	for ii = 0, burst_spike_count.size()-1 {
+		fprint("\n%f",burst_spike_count.x[ii])
+	}
+	wopen()
+	printf("**End of save_thresh().\n\n")
+}
+
+proc save_block() {
+	
+	//printf("%s\n",firing_file.s)
+	
+	if (burst_spike_count.size() == 0 ) { 
+		mean_spike_count_per_burst  = -1
+	} else {
+		mean_spike_count_per_burst = burst_spike_count.mean()
+	}
+	printf("Number of bursts %g, with average of %g spikes per burst.\n", burst_spike_count.size(), mean_spike_count_per_burst)
+	
+	thresh_file	= new String()
+	sprint(thresh_file.s,"%s/block.txt",run_folder.s)
+	wopen(thresh_file.s)
+	
+	fprint("%f\n%f\n%f\n%f", AMP, firing_rate, mean_spike_count_per_burst, burst_spike_count.size())
+	for ii = 0, burst_spike_count.size()-1 {
+		fprint("\n%f",burst_spike_count.x[ii])
+	}
+	wopen()
+	printf("**End of save_thresh().\n\n")
+}

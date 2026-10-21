@@ -1,0 +1,214 @@
+// all variables & objects to be loaded already initialized in defvars.hoc
+// objref current_dir, coord_file, coord_file2
+// objref secrefs		// list containing section references
+// objref xList, yList, zList
+
+proc setpointers() {
+	getSecRefs() 	// save coordinates, get section refs, and assign section types
+	
+	forall {
+		if (ismembrane("xtra")) {
+			for (x, 0) {		
+				setpointer ex_xtra(x), e_extracellular(x)
+			}
+		}
+	}
+	//print "After any change to cell geometry or nseg, be sure to invoke setpointers()"
+}
+
+proc getSecRefs(){ 
+	
+	getcoords()
+	
+	if ( resave ) {	
+		printf("Resave is ON.\n")
+		savecoords()
+	}
+	assign_order() 			// use depth-first tree traversal, works for any tree, but requires NSTACK >= 100000 for most 
+	assign_section_types() 	// now that secrefs has been created, assign type_xtra field in each section
+
+}
+
+
+proc getcoords() { local ii, num_3d, xr, xr_i localobj xx, yy, zz, length, xint, yint, zint, range
+	
+	// xx, yy, zz, length : original data, irregularly spaced
+	// xint, yint, zint, range: interpolated data, spaced at regular intervals
+
+	secrefs = new List()
+	numSect = 0 		// count number of sections
+	numComp = 0 		// count number of compartments
+		
+	// list of segment coordinates from each section		
+	xList = new List()
+	yList = new List()
+	zList = new List()
+	
+	forall {
+		if ( ismembrane("xtra") ) {
+			secrefs.append(new SectionRef())	// only create for sections with xtra mechanism	
+			numSect += 1 			// increment numSect
+			numComp += nseg 		// keep track of number of compartments of model
+			
+			// get the data for the section		
+			num_3d = n3d()				// number of pt3d() points
+			xx = new Vector(num_3d) 	//creates xx vector length of num_3d
+			yy = new Vector(num_3d)
+			zz = new Vector(num_3d)
+			length = new Vector(num_3d) 		
+			for ii = 0, num_3d-1 {				// loops through points in sec				
+				xx.x[ii] = x3d(ii) 			// assigns x coordinate to xx
+				yy.x[ii] = y3d(ii) 			// assigns y coordinates to yy
+				zz.x[ii] = z3d(ii) 			// assigns z coordinates to zz
+				length.x[ii] = arc3d(ii) 	// length position of point
+			}
+
+			// To use Vector class's .interpolate() must first scale
+			// the independent variable i.e. normalize length along centroid
+			length.div(length.x[num_3d-1])
+			// length now contains the normalized distances of the pt3d points 
+			// along the centroid of the section.  These are spaced at irregular intervals.
+			
+			// initialize the destination "independent" vector
+			range = new Vector(nseg+2) 		// nseg+2 because counts centers of each seg + 0 and 1
+			range.indgen(1/nseg) 			// stepsize is 1/nseg, normalized to go from 0 to 1
+			range.sub(1/(2*nseg))
+			range.x[0]=0
+			range.x[nseg+1]=1
+			// range contains the normalized distances of the nodes along the 
+			// centroid of the section.  These are spaced at regular intervals.
+			// Ready to interpolate.
+
+			xint = new Vector(nseg+2) 
+			yint = new Vector(nseg+2)
+			zint = new Vector(nseg+2)
+			xint.interpolate(range, length, xx)
+			yint.interpolate(range, length, yy)
+			zint.interpolate(range, length, zz)
+
+			// for each node, assign the xint, y_int, z_int values to x_xtra, y_xtra, z_xtra
+			///
+			// don't bother computing coords of the 0 and 1 ends ( ii = 0, or nseg+1 )
+			// also avoid writing coords of the 1 end into the last internal node's coords	
+			
+			xr = range.x[0]
+			x_xtra(xr) = xint.x[0]
+			y_xtra(xr) = yint.x[0]
+			z_xtra(xr) = zint.x[0]
+			
+			for ii = 1, nseg+1 {			
+				xr = range.x[ii]
+				x_xtra(xr) = xint.x[ii] //save section coordinates using xtra mechanism
+				y_xtra(xr) = yint.x[ii]
+				z_xtra(xr) = zint.x[ii]
+				// Use backward difference to get components of compartment directional vector
+				xr_i =  range.x[ii-1]
+				Dx_xtra(xr) = x_xtra(xr) - x_xtra(xr_i)
+				Dy_xtra(xr) = y_xtra(xr) - y_xtra(xr_i)
+				Dz_xtra(xr) = z_xtra(xr) - z_xtra(xr_i)					
+			}
+			// remove coords of 0 and 1 ends before adding to coord list for exporting to text file
+			xint.remove(nseg+1)
+			xint.remove(0)
+			yint.remove(nseg+1)
+			yint.remove(0)
+			zint.remove(nseg+1)
+			zint.remove(0)
+			
+			xList.append(xint) //add section's interpolated coordinates to list 
+			yList.append(yint)
+			zList.append(zint)		
+		}	  
+	}
+	printf("Coordinates obtained.\n")
+	printf("Created List of SectionRefs for %g sections. Total number of compartments is %g.\n",numSect, numComp)
+}
+
+proc savecoords() { local kk, ii, len localobj xc, yc, zc, coord_file	
+	
+	{	coord_file = new String()
+		sprint(coord_file.s, "%scoords/coordinates%g.txt", current_dir.s, cell_id)
+		wopen(coord_file.s) 
+	}
+	
+	for kk = 0, numSect-1 {
+		xc = new Vector() 
+		yc = new Vector()
+		zc = new Vector()
+		
+		xc = xList.o(kk) 	//extract coordinates vector of current section
+		yc = yList.o(kk)
+		zc = zList.o(kk)		
+		len = xc.size()
+		
+		for ii = 0,len-1 {
+			fprint("%f %f %f\n", xc.x[ii], yc.x[ii], zc.x[ii]) //write to txt file
+		}		
+	}
+	
+	{ wopen() }
+	printf("Coordinates saved to %s.\n",coord_file.s)
+}
+
+
+proc assign_order() { local order, nn localobj soma_child_secref
+	// access secrefs.o(0).sec // access soma
+	//print secname()
+	
+	order = 0
+	secrefs.o(0).sec.order_xtra = order		// soma is 0th order.
+	order += 1 								// increase branch order 1					
+	for nn = 0, secrefs.o(0).nchild() - 1 {		
+		secrefs.o(0).child[nn] {
+			soma_child_secref = new SectionRef()
+			traverse_tree_order(order, soma_child_secref)
+			//print "n = ", n, "in section", secname()
+		}		
+	}	
+	printf("Assigned branch orders using traverse_tree (assign_order) in order_xtra.\n")
+}
+
+proc traverse_tree_order() { local order, num_child, ii localobj current_secref, child_secref, parent_secref
+	order = $1
+	current_secref = $o2
+	current_secref.sec.order_xtra = order 	// assign order to currently access section
+	
+	num_child = current_secref.nchild
+	
+	if ( num_child != 0 ) {
+		//current_secref.sec { printf("%s: order %g, %g child(ren) .\n",secname(), order, num_child) }
+		if (num_child > 1) { order += 1 }	 // child is the same branch order if only one child
+		for ii = 0, num_child - 1 {
+			current_secref.child[ii] { child_secref = new SectionRef() }		
+			traverse_tree_order(order, child_secref )	
+		} 
+	} // else {	current_secref.sec { printf("%s: order %g, terminal.\n",secname(), order) } } 
+}
+
+// 0 = intermediate compartments, assigned by default in xtra.mod
+// 1 = soma (no parent)
+// 2 = termination ** only the termination point (1 end of section) ** 
+// 3 = parent side of bifurcation ** only the last point (1 end of the section) ** 
+// 4 = child side of the bifurcation (parent is a 1 or 3) ** only the first point (0 end of section) ** 
+
+proc assign_section_types(){ local ii, num_child, num_sibling localobj parent_sec	// assign morphological type to section center as part of xtra (type_xtra)
+	for ii = 0, numSect-1 {
+		if (secrefs.o(ii).has_trueparent() == 0) { 		// Soma/root section
+			secrefs.o(ii).sec.type_xtra = 1 			// assigns to 0.5 by default, but is always uniform for each section, so doesn't matter 			
+		} else { 										// not root section			
+			num_child = secrefs.o(ii).nchild()
+			if ( num_child == 0 ) { 
+				secrefs.o(ii).sec.type_xtra(1) = 2  	// terminations
+			} else if ( num_child > 1 ) {
+				secrefs.o(ii).sec.type_xtra(1) = 3		// parent side of bifurcation
+			}
+			
+			secrefs.o(ii).parent() {
+				parent_sec = new SectionRef()
+				num_sibling = parent_sec.nchild()
+			}
+			if (num_sibling > 1) { secrefs.o(ii).sec.type_xtra(0) = 4 } 	//  child side of branch point or soma
+		}		
+	}
+	printf("Assigned section types to each section in type_xtra.\n")
+}

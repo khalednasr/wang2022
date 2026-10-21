@@ -1,0 +1,135 @@
+// all variables to be loaded already initialized in defvars.hoc
+proc getParams() { localobj params_file_name, params_file, params_vec
+	
+	params_file_name = new String()
+	sprint(params_file_name.s, "Params/%s/Params.txt", run_name.s)
+	
+	params_file = new File()
+	params_file.ropen(params_file_name.s)
+	
+	params_vec = new Vector()
+	params_vec.vread(params_file)
+	
+	params_file.close()	
+	
+	/* MATLAB variable showing the order of parameters
+	Params = [  simulation.cell_model_id; ...
+                simulation.replace_axon; ...
+                simulation.prune_axon; ...
+                simulation.myelinate_axon; ...
+                simulation.modify_axon; ...
+                simulation.scale_axon_diam; ...
+                simulation.scale_mainaxon_diam; ...
+                simulation.scale_apic_diam; ...
+                simulation.scale_basal_diam; ...
+                simulation.scale_soma_area; ...
+                simulation.scale_basal_L; ...
+                simulation.min_myelin_diam; ...
+                simulation.max_myelin_order; ...
+                simulation.ss_init; ...
+                simulation.v_init; ...
+                simulation.temp; ...
+                simulation.dt; ...
+                simulation.record_dt; ...
+                simulation.t_stop; ...
+                simulation.cmprt; ...
+                E_field.E1.amp; ...
+                E_field.E1.theta; ...
+                E_field.E1.phi; ...
+                E_field.E2.theta; ...
+                E_field.E2.phi; ...
+                E_field.min_spike_num;
+                E_field.t_ss_start; ...
+                E_field.t_ss_end; ...
+                E_field.scale; ...
+				I_inj.st_amp; ...
+                I_inj.st_del; ...
+                I_inj.st_dur; ...
+                I_inj.st_mode ...
+                ];*/
+
+	cell_id = 			params_vec.x[0] 
+	replace_ax = 		params_vec.x[1]
+	prune_ax = 			params_vec.x[2]
+	myelinate_ax = 		params_vec.x[3]
+	mod_ax = 			params_vec.x[4]
+	scale_ax = 			params_vec.x[5]
+	scale_mainax = 		params_vec.x[6]
+	scale_apic_diam = 	params_vec.x[7]
+	scale_basal_diam = 	params_vec.x[8]
+	scale_soma_area = 	params_vec.x[9]
+	scale_basal_L = 	params_vec.x[10]
+	min_myelinD = 		params_vec.x[11]
+	max_myelin_order = 	params_vec.x[12]
+	ss_init = 			params_vec.x[13]		// 1 for steady state initialization, 0 if not
+	v_init = 			params_vec.x[14]
+	temp = 				params_vec.x[15]
+	dt = 				params_vec.x[16] 
+	steps_per_ms = 1 / dt 				// make sure simulation runs with appropriate time resolution
+	record_dt = 		params_vec.x[17]
+	tstop = 			params_vec.x[18]	
+	cmprt =				params_vec.x[19]
+	AMP = 				params_vec.x[20]		// initial amplitude of E-field 1
+	theta1 = 			params_vec.x[21]		// orientation of E-field 1
+	phi1 = 				params_vec.x[22]
+	theta2 = 			params_vec.x[23] 					// orientation of E-field 2	
+	phi2 = 				params_vec.x[24]
+	min_spike_num = 	params_vec.x[25]
+	t_ss_start = 		params_vec.x[26]
+	t_ss_end = 			params_vec.x[27]
+	scale_factor =		params_vec.x[28] 
+	st_amp = 			params_vec.x[29] 			// for IClamp 
+	st_del = 			params_vec.x[30]
+	st_dur = 			params_vec.x[31]
+	st_mode = 			params_vec.x[32] 			// current injection mode
+	
+	printf("******Read model parameters from text file******\n")
+	printf("Cell ID: %g. Replace axon: %s. Prune axon: %s. Myelinate axon: %s. Modify axon: %s. \n", cell_id, NoYes.o(replace_ax).s, NoYes.o(prune_ax).s, NoYes.o(myelinate_ax).s,  NoYes.o(mod_ax).s)	
+	printf("Scale axon diam = %g.\tScale main axon diam = %g.\tScale apic diam = %g.\tScale basal diam = %g.\n", scale_ax, scale_mainax, scale_apic_diam, scale_basal_diam)
+	printf("Scale soma area = %g.\tScale basal L = %g.\tmin_myelinD = %g.\tmax_myelin_order = %g.\n",scale_soma_area, scale_basal_L, min_myelinD, max_myelin_order)
+	printf("Steady state initialization: %s.\tv_init = %g mV.\ttemp = %g degree Celcius.\n",NoYes.o(ss_init).s,v_init,temp)
+	printf("dt = %g ms.\tRecord time step = %g ms.\ttstop = %g ms.\n", dt, record_dt, tstop)
+	printf("E-field 1: theta = %g deg,\t phi = %g deg,\tinitial amp = %g V/m. \n", theta1, phi1, AMP )
+	printf("E-field 2: theta = %g deg,\t phi = %g deg.\n", theta2, phi2 )
+	printf("Compartment for threshold: %s. Minimum number of spikes/bursts to count: %g.\n", cmprt_str.o(cmprt-1).s, min_spike_num)
+	printf("Stimulation steady state start time %g ms and end time: %g ms.\n", t_ss_start, t_ss_end)
+	printf("Scaling factor for threshold search %g.\n", scale_factor)
+	printf("Current clamp: amp = %g nA,\tdel = %g ms,\tdur = %g ms,\tmode = %g.\n", st_amp, st_del, st_dur, st_mode)
+	printf("******************************************\n")	
+	if ( ss_init == 1 ){
+		{ load_file("ssprocinit.hoc") }
+	}
+	printf("**End of getParams().\n\n")
+}
+	
+
+/*if (synapses_on == 1){		
+		sprint(synapse_file_name.s,"Params/%s/synParams.txt",run_name)
+		synapse_file.ropen(synapse_file_name.s)
+		synapse_mat.scanf(synapse_file, n_synapses,2)
+		synapse_file.close()	
+		active_pre_mtypes = synapse_mat.getcol(0) // 1 if on, 0 if off
+		pre_mtype_freqs = synapse_mat.getcol(1) // mean frequency in Hz of presynaptic m-type 
+		printf("Read active pre-mtypes and frequencies from synParams.txt .\n")
+		printf("Number of presynaptic inputs = %g, Sum of frequencies of all inputs = %.2f Hz.\n",active_pre_mtypes.sum(),pre_mtype_freqs.sum() )
+} else if (synapses_on==2){ // UNFINISHED
+		sprint(synapse_file_name.s,"Params/%s/synParams.txt",run_name)
+		synapse_file.ropen(synapse_file_name.s)
+		synapse_mat.scanf(synapse_file,n_synapses,2)
+		synapse_file.close()	
+		active_pre_mtypes = synapse_mat.getcol(0) // 1 if on, 0 if 0ff
+		pre_mtype_freqs = synapse_mat.getcol(1) // mean frequency in Hz of presynaptic m-type 
+		printf("Read active pre-mtypes and frequencies from synParams.txt\n")
+		printf("Number of presynaptic inputs = %g, Sum of frequencies of all inputs = %.2f Hz\n",active_pre_mtypes.sum(),pre_mtype_freqs.sum())	
+		strdef spike_file_name
+		sprint(spike_file_name,"Params/%s/spikes.txt",run_name)
+		spike_file = new File(spike_file_name)
+		spike_file.ropen()
+		spike_times = new Vector()
+		spike_times.vread(spike_file)
+		spike_file.close()
+		pre_mtype_rec = spike_times.x[0]
+		spike_times.remove(0) // remove m type id, leaves only spike times
+		printf("Loaded presynaptic spike times from %s. %g recorded spikes\n",spike_file_name,spike_times.size())
+		{load_file("load_spikes.hoc")}
+}*/

@@ -1,0 +1,17 @@
+{    load_file(	"nrngui.hoc"					)	}
+{    load_file(	"defvars.hoc"					)	}
+{    load_file(	"O2d.hoc"						)	}
+{    load_file(	"getParams.hoc"					)	}
+{    load_file(	"interp_coordinates.hoc"		)	}
+{    load_file(	"cell_chooser.hoc"				)	}
+{    load_file(	"edit_morphology.hoc"			)	} // procs for editing cell morphology
+{    load_file(	"get_es.hoc"					)	} // analogue -> calcrxc.hoc
+{    load_file(	"stim_wave_import.hoc"			)	} // -> stim.hoc
+{    load_file(	"saveDatavector.hoc"			)	} // saving procs
+{    load_file(	"rig_mat.ses"					)	} // contains RunControl
+{    load_file(	"threshold_finder.hoc"			)	} // threshold finder funcs & procs
+{    load_file(	"block_threshold_finder.hoc"	)	} // threshold finder funcs & procs
+{    load_file(	"block_threshold_finder_wfilt.hoc"	)	} // threshold finder funcs & procs
+{    load_file(	"init_save_record.hoc"			)	} // setting up recording and saving procs
+{    load_file(	"run_stim.hoc"					)	} // main model procs
+

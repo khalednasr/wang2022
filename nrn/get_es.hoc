@@ -1,0 +1,146 @@
+// MATLAB script V_data produces text file with single vector of calculated potential for 
+// every segment coordinate. This procedure assigns each potential to its respective node 
+// in es_xtra(x), which is a range variable that points to e_extracullar
+// es_xtra(x) is scaled with the stimulation waveform contained in stim_waveform.hoc
+
+
+proc getes() {
+
+	if (cell_rotated == 0) {
+		x_rotate(cell.all) 		// sets cell_rotated to 1
+		printf("Rotated cell.\n")	
+	}
+	setpointers()	
+	
+	// Calculate potentials for uniform E-field in NEURON 
+	calces1(theta1,phi1)
+	calces2(theta2,phi2)
+	printf("Calculated E-field potentials in NEURON for theta1 = %g, phi1 = %g & theta2 = %g, phi2 = %g with cell_rotated: %s.\n",theta1, phi1, theta2, phi2, NoYes.o(cell_rotated).s)		
+	printf( "Saved to es_xtra(x).\n")
+	printf("**End of getes().\n\n")
+}
+
+
+// input theta, and phi angles of E-field
+proc calces1() { local theta1, phi1, Ex1, Ey1, Ez1
+	theta1 = $1 * deg2rad
+	phi1 = $2 * deg2rad
+	Ex1 = sin(theta1)*cos(phi1)
+	Ey1 = sin(theta1)*sin(phi1)
+	Ez1 = cos(theta1)
+	forall {
+		if (ismembrane("xtra")) {
+			for(x,0){
+				es1_xtra(x) = -(Ex1*x_xtra(x) + Ey1*y_xtra(x) + Ez1*z_xtra(x))*1e-3 // Ve in [mV] <= um*1e-3 = mm * 1mV/mm = mV
+			}
+		}
+	}
+}
+
+// input theta and phi angles of second E-fields theta2, phi2, relative strength vs first E-field is scaled by stim2 vector loaded from file
+proc calces2() { local theta2, phi2, Ex2, Ey2, Ez2
+	theta2 = $1 * deg2rad
+	phi2 = $2 * deg2rad
+	Ex2 = sin(theta2) * cos(phi2)
+	Ey2 = sin(theta2) * sin(phi2)
+	Ez2 = cos(theta2)
+	forall {
+		if (ismembrane("xtra")) {
+			for(x,0){
+				es2_xtra(x) = -(Ex2 * x_xtra(x) + Ey2 * y_xtra(x) + Ez2 * z_xtra(x))*1e-3 // Ve in [mV] <= um*1e-3 = mm * 1mV/mm = mV
+			}
+		}
+	}
+}
+
+/*
+// Load Ex,Ey,Ez calculate Ve using pseudo-potential integration method
+objref Exyz
+proc calc_pseudo_es() { local ii, nn localobj Er_file, somachild_secref, numComps_sec//, Exyz
+	strdef Er_file_name
+	sprint(Er_file_name,"Params/%s/Er.txt",run_name)	
+	Er_file = new File(Er_file_name)
+	Er_file.ropen()	
+	Exyz = new Matrix()
+	Exyz.scanf(Er_file,numComp,3)	
+	// assign Ex, Ey, Ez to each compartment
+	ii = 0
+	forall {
+		if (ismembrane("xtra")) {
+			for (x,0) {
+				Ex_xtra = Exyz.getval(ii,0)
+				Ey_xtra = Exyz.getval(ii,1)
+				Ez_xtra = Exyz.getval(ii,2)
+				ii += 1
+			}
+		}
+	}	
+	printf("Read %g E(x,y,z) values from %s and assigned to Ex_xtra,Ey_xtra,Ez_xtra\n",Exyz.nrow,Er_file_name)
+	// traverse tree while numerically integrating Ve along paths
+	access secrefs.o(0).sec // access soma
+	// set soma as ground, Ve = 0
+	secrefs.o(0).sec {	//should have nseg = 1	
+		Ex0 = Ex_xtra
+		Ey0 = Ey_xtra
+		Ez0 = Ez_xtra // pass E-field to children to get E-field between 1st compartment and soma
+		x0 = x_xtra
+		y0 = y_xtra
+		z0 = z_xtra // pass compartment coordinate to children
+		//printf("x0 = %f, y0 = %f, z0 = %f\n",x0,y0,z0)
+		//es_xtra = -1e-3*(Ex0*x_xtra + Ey0*y_xtra + Ez0*z_xtra)
+		es_xtra = 0
+	}
+	
+	for nn = 0, secrefs.o(0).nchild() - 1{
+		secrefs.o(0).child[nn] { // start from each child branch of soma
+			somachild_secref = new SectionRef()
+			traverse_tree_pseudoP(secrefs.o(0).sec.es_xtra,x0,y0,z0,Ex0,Ey0,Ez0,somachild_secref)
+		}
+	}
+	
+
+}
+
+proc traverse_tree_pseudoP() { local ii, jj, xr, xr_i, x0, y0, z0, Ve_prev, Ex_prev, Ey_prev, Ez_prev localobj current_secref, child_secref, parent_secref, range
+	Ve_prev = $1
+	x0 = $2
+	y0 = $3
+	z0 = $4
+	Ex_prev = $5
+	Ey_prev = $6
+	Ez_prev = $7
+	current_secref = $o8	
+		
+	current_secref.sec {
+		// get normalized positions of coordinates (x)
+		range = new Vector(nseg+2)
+		range.indgen(1/nseg)
+		range.sub(1/(2*nseg))
+		range.x[0] = 0
+		range.x[nseg+1] = 1
+		xr = range.x[1] // first compartment's x value
+
+		// Calculate Ve at first compartment using parent's last Ve and E vector	
+		es_xtra(xr) = Ve_prev - (1/2)*1e-3*( (Ex_prev + Ex_xtra(xr))*(x_xtra(xr)-x0) + (Ey_prev + Ey_xtra(xr))*(y_xtra(xr)-y0) + (Ez_prev + Ez_xtra(xr))*(z_xtra(xr)-z0) ) // mV
+		//printf("z0 = %f, z_xtra(xr) = %f, Ez_prev = %f, Ez_xtra(xr) = %f\n", z0, z_xtra(xr), Ez_prev, Ez_xtra(xr))
+		//print "Ve_prev = ", Ve_prev, " ", "es(0) = ", es_xtra(0)
+		// Calculate Ve for rest of compartments using backwards averaging of E vectors (Dx,Dy,Dz used backwards diff)
+		for ii = 2,nseg {
+			xr = range.x[ii]
+			xr_i = range.x[ii-1]
+			es_xtra(xr) = es_xtra(xr_i) - (1/2)*1e-3*(  (Ex_xtra(xr) + Ex_xtra(xr_i))*Dx_xtra(xr) + (Ey_xtra(xr) + Ey_xtra(xr_i))*Dy_xtra(xr) + (Ez_xtra(xr) + Ez_xtra(xr_i))*Dz_xtra(xr) )
+			//printf("es_xtra(xr) %g\n", es_xtra(xr))
+		}
+	}
+	
+	// continue with depth
+	if (current_secref.nchild > 0) { 
+		for jj = 0, current_secref.nchild() - 1 {
+			current_secref.child[jj] { child_secref = new SectionRef()	}
+			current_secref.sec {
+				traverse_tree_pseudoP(es_xtra(1),x_xtra(1),y_xtra(1), z_xtra(1), Ex_xtra(1),Ey_xtra(1),Ez_xtra(1),child_secref)				
+			}
+		}
+	}	
+		
+}*/

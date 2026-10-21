@@ -1,0 +1,222 @@
+/** Simulation control **/
+
+proc init_run() {
+	getParams()			// get parameters from MATLAB
+	cell_chooser()		// create cell
+	getes()				// get newest extracellular potentials
+	load_stim_waveform()
+	init_AP_record()
+	printf("****End of init_run().\n\n\n")
+}
+
+proc run_stim() {
+	init_vm_record_4()
+	stimul()
+	save_data_thresh()
+	//save firing rate?
+}
+proc run_block_filt() {
+	load_filters()
+	init_vm_record_5()
+	thresh_blocked_filt()
+	save_data_block()
+	//save firing rate?
+}
+
+proc find_thresh() { 
+	threshold() // threshold
+	init_vm_record_4()
+	rerun()
+	save_data_thresh()		
+	save_thresh()
+	
+	printf("****End of find_thresh().\n\n\n")
+}
+
+proc find_block() { 
+	/*if (AMP >= thresh_high / thresh_factor ) {
+		AMP = AMP * thresh_factor
+	} else {
+		AMP = AMP * block_factor
+	}*/
+	init_vm_record_1()
+	threshold_block() // threshold
+	init_vm_record_5()
+	rerun_block()
+	save_data_block()
+	save_block()
+	
+	printf("****End of find_block().\n\n\n")
+}
+
+proc find_block_filt() { 
+	/*if (AMP >= thresh_high / thresh_factor ) {
+		AMP = AMP * thresh_factor
+	} else {
+		AMP = AMP * block_factor
+	}*/
+	
+	/*
+	{
+	graph_filt =  new Graph(0)
+	graphList[0].append(graph_filt)
+	graph_filt.size(0,4000,-100,80)
+	graph_filt.view(0, -100, 4000, 180, 250, 100, 1000, 750)
+	graph_filt.addexpr("Soma","vm_soma", 2, 3)
+	graph_filt.addexpr("Soma filtered","vm_soma_filt", 1, 4)
+	
+	//graph_filt.addexpr("Soma filtered","vm_soma_filt", 1, 4)
+	//save_window_.addexpr("Soma filtered","vm_soma_filt", 1, 4)
+	}
+	*/
+	load_filters()
+	init_vm_record_1()
+	threshold_block_filt() // threshold
+	init_vm_record_5()
+	rerun_block_filt()
+	save_data_block()
+	save_block()
+	
+	printf("****End of find_block().\n\n\n")
+}
+
+proc stimul() {
+	finitialize(v_init)
+	setstim(AMP) // set amplitude of stimulation waveform
+	printf("Running stimulation with E1 = %.3f V/m... ", AMP) // print E-field amplitude
+	run()
+	printf("Finished run.\n")
+}
+
+
+proc rerun() { local ii, inc
+	// //
+	/*if (dt >= 0.025) {
+		dt = 0.025
+		steps_per_ms = 1 / dt
+		printf("Changing dt to %g ms for recording.\n", dt)
+	}
+	while (thresh_excited() == 0) {
+		AMP = AMP * 1.005 	// make sure threshold value is at/above threshold for saving vm vs. t data		
+		printf("Amplitude subthreshold. Increasing by 0.5%% to: %3.3f.\n",  AMP)
+	}		
+	printf("Amplitude suprathreshold.\n")
+	*/
+	// //
+	
+	/*
+	if (dt > 0.020) {
+		dt = 0.020
+		steps_per_ms = 1 / dt
+		printf("Changing dt to %g ms for recording.\n", dt)
+	}*/
+	
+	if ( (abs(AMP) <= thresh_low ) || (abs(AMP) >= thresh_high) ) {
+		printf("No threshold bounds found. Exiting after recording.\n")
+		thresh_excited()
+	} else {
+		printf("Testing geometric mean of bounds.\n")
+		inc = exp( log(scale_factor) / ( 2^(count_search+1) ) )
+		if (thresh_excited() == 0) {
+			AMP = AMP * inc
+			printf("Amplitude subthreshold. Rerun upper bound for recording.\n")
+			thresh_excited()
+		} else {
+			printf("Amplitude suprathreshold.\n")
+		}
+		
+		printf("Achieved %1.2f%% accuracy. Final threshold amplitude = %3.3f.\n", (inc-1) * 100, AMP)
+	}
+	
+	//printf("E-field 1: theta = %g degree, phi = %g degree, threshold amplitude = %f V/m.\n",theta1, phi1, AMP)
+	//printf("E-field 2: theta = %g degree, phi = %g degree.\n",theta2, phi2)
+}
+
+proc rerun_block() { local ii, inc
+	// //
+	/*if (dt >= 0.025) {
+		dt = 0.025
+		steps_per_ms = 1 / dt
+		printf("Changing dt to %g ms for recording.\n", dt)
+	}
+	while (thresh_excited() == 0) {
+		AMP = AMP * 1.005 	// make sure threshold value is at/above threshold for saving vm vs. t data		
+		printf("Amplitude subthreshold. Increasing by 0.5%% to: %3.3f.\n",  AMP)
+	}		
+	printf("Amplitude suprathreshold.\n")
+	*/
+	// //
+	
+	/*
+	if (dt > 0.020) {
+		dt = 0.020
+		steps_per_ms = 1 / dt
+		printf("Changing dt to %g ms for recording.\n", dt)
+	}*/
+	
+	if ( (abs(AMP) <= block_low ) || (abs(AMP) >= block_high) ) {
+		printf("No block threshold bounds found. Exiting after recording.\n")
+		thresh_blocked()
+	} else {
+		printf("Testing geometric mean of bounds.\n")
+		inc = exp( log(scale_factor) / ( 2^(count_search+1) ) )
+		if (thresh_blocked() == 0) {
+			AMP = AMP * inc
+			printf("Amplitude sub-block-threshold. Rerun upper bound for recording.\n")
+			thresh_blocked()
+		} else {
+			printf("Amplitude supra-block-threshold.\n")
+		}
+		
+		printf("Achieved %1.2f%% accuracy. Final block-threshold amplitude = %3.3f.\n", (inc-1) * 100, AMP)
+	}
+	
+	//printf("E-field 1: theta = %g degree, phi = %g degree, threshold amplitude = %f V/m.\n",theta1, phi1, AMP)
+	//printf("E-field 2: theta = %g degree, phi = %g degree.\n",theta2, phi2)
+}
+
+
+proc rerun_block_filt() { local ii, inc
+
+	
+	if ( (abs(AMP) <= block_low ) || (abs(AMP) >= block_high) ) {
+		printf("No block threshold bounds found. Exiting after recording.\n")
+		thresh_blocked_filt()
+	} else {
+		printf("Testing geometric mean of bounds.\n")
+		inc = exp( log(scale_factor) / ( 2^(count_search+1) ) )
+		if (thresh_blocked_filt() == 0) {
+			AMP = AMP * inc
+			printf("Amplitude sub-block-threshold. Rerun upper bound for recording.\n")
+			thresh_blocked_filt()
+		} else {
+			printf("Amplitude supra-block-threshold.\n")
+		}
+		
+		printf("Achieved %1.2f%% accuracy. Final block-threshold amplitude = %3.3f.\n", (inc-1) * 100, AMP)
+	}
+	
+	//printf("E-field 1: theta = %g degree, phi = %g degree, threshold amplitude = %f V/m.\n",theta1, phi1, AMP)
+	//printf("E-field 2: theta = %g degree, phi = %g degree.\n",theta2, phi2)
+}
+/*
+		if (thresh_excited()) {
+			AMP = AMP / 1.01
+			printf("Lower bound suprathreshold after changing dt. Reducing by 1%% to: %3.3f.\n", AMP)
+			while (thresh_excited()) {
+				AMP = AMP / 1.01
+				printf("Amplitude suprathreshold. Reducing by 1%% to: %3.3f.\n", AMP)
+			}		
+			printf("Amplitude subthreshold. Rerun last suprathreshold amplitude for recording.\n")
+			AMP = AMP * 1.01
+			thresh_excited()
+		} else {
+			AMP = AMP * 1.01 	// make sure threshold value is at/above threshold for saving vm vs. t data		
+			printf("Lower bound subthreshold. Increasing by 1%% to: %3.3f.\n", AMP)
+			while (thresh_excited() == 0) {
+				AMP = AMP * 1.01 	// make sure threshold value is at/above threshold for saving vm vs. t data		
+				printf("Amplitude subthreshold. Increasing by 1%% to: %3.3f.\n",  AMP)
+			}		
+			printf("Amplitude suprathreshold.\n")
+		}
+*/
