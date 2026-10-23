@@ -1,4 +1,6 @@
 x86_64/
 .direnv/
 .envrc
-
+coords/
+Data.zip
+Params/
